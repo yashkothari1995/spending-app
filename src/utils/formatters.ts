@@ -9,7 +9,12 @@ export const CURRENCIES: Record<CurrencyCode, CurrencyOption> = {
   AUD: { code: 'AUD', symbol: 'A$', name: 'Australian Dollar (A$)' },
   JPY: { code: 'JPY', symbol: '¥', name: 'Japanese Yen (¥)' },
   SGD: { code: 'SGD', symbol: 'S$', name: 'Singapore Dollar (S$)' },
+  '$': { code: '$', symbol: '$', name: 'US Dollar ($)' },
+  '€': { code: '€', symbol: '€', name: 'Euro (€)' },
+  '£': { code: '£', symbol: '£', name: 'British Pound (£)' },
+  '₹': { code: '₹', symbol: '₹', name: 'Indian Rupee (₹)' },
 };
+
 
 export function formatCurrency(amount: number, code: CurrencyCode = 'USD'): string {
   const symbol = CURRENCIES[code]?.symbol || '$';

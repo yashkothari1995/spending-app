@@ -1,4 +1,4 @@
-export type CurrencyCode = 'USD' | 'EUR' | 'GBP' | 'INR' | 'CAD' | 'AUD' | 'JPY' | 'SGD';
+export type CurrencyCode = 'USD' | 'EUR' | 'GBP' | 'INR' | 'CAD' | 'AUD' | 'JPY' | 'SGD' | '$' | '€' | '£' | '₹';
 
 export interface CurrencyOption {
   code: CurrencyCode;
@@ -36,6 +36,7 @@ export interface Category {
   icon: string; // lucide icon name
   color: string; // tailwind color class or hex
   isCustom?: boolean;
+  createdByUserId?: string;
 }
 
 export interface ExpenseShare {
@@ -107,6 +108,7 @@ export interface RecurringExpense {
 
   status: 'active' | 'paused' | 'ended';
   notes?: string;
+  createdByUserId?: string;
   createdAt: string;
 }
 
@@ -119,6 +121,7 @@ export interface Settlement {
   amount: number;
   date: string; // YYYY-MM-DD
   notes?: string;
+  createdByUserId?: string;
   createdAt: string;
 }
 
@@ -132,7 +135,9 @@ export interface Budget {
   month: string; // YYYY-MM
   totalBudget: number;
   categoryBudgets: CategoryBudget[];
+  createdByUserId?: string;
 }
+
 
 export interface UserAccount {
   id: string; // e.g. 'USR-8492' or 'alex_k'

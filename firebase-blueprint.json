@@ -2,7 +2,7 @@
   "entities": {
     "userAccounts": {
       "title": "User Accounts",
-      "description": "User accounts and profile metadata for multi-user family split tracking",
+      "description": "User accounts and profile metadata bound to authenticated Firebase Auth UID",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
@@ -19,44 +19,41 @@
     },
     "expenses": {
       "title": "Expenses",
-      "description": "Individual logged expense transactions",
+      "description": "User-scoped transaction records",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
-        "title": { "type": "string" },
-        "amount": { "type": "number" },
+        "description": { "type": "string" },
+        "totalAmount": { "type": "number" },
         "date": { "type": "string" },
-        "category": { "type": "string" },
+        "categoryId": { "type": "string" },
         "paidBy": { "type": "string" },
         "splitType": { "type": "string" },
-        "splitCount": { "type": "number" },
         "notes": { "type": "string" },
         "createdByUserId": { "type": "string" },
         "createdByUserName": { "type": "string" },
         "createdAt": { "type": "string" }
       },
-      "required": ["id", "title", "amount", "date", "category", "paidBy"]
+      "required": ["id", "description", "totalAmount", "date", "categoryId", "createdByUserId"]
     },
     "recurringExpenses": {
       "title": "Recurring Expenses",
-      "description": "Automated recurring expense templates",
+      "description": "User-scoped automated recurring expense templates",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
         "title": { "type": "string" },
         "amount": { "type": "number" },
         "frequency": { "type": "string" },
-        "category": { "type": "string" },
+        "categoryId": { "type": "string" },
         "paidBy": { "type": "string" },
-        "splitType": { "type": "string" },
-        "nextDueDate": { "type": "string" },
-        "active": { "type": "boolean" }
+        "createdByUserId": { "type": "string" }
       },
-      "required": ["id", "title", "amount", "frequency", "category"]
+      "required": ["id", "title", "amount", "frequency", "categoryId", "createdByUserId"]
     },
     "settlements": {
       "title": "Settlements",
-      "description": "Recorded payments settling up partner balances",
+      "description": "Recorded debt settlements between partners",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
@@ -64,31 +61,29 @@
         "date": { "type": "string" },
         "payer": { "type": "string" },
         "payee": { "type": "string" },
-        "notes": { "type": "string" },
-        "createdAt": { "type": "string" }
+        "createdByUserId": { "type": "string" }
       },
-      "required": ["id", "amount", "date", "payer", "payee"]
+      "required": ["id", "amount", "date", "payer", "payee", "createdByUserId"]
     },
     "categories": {
       "title": "Categories",
-      "description": "Custom transaction categories",
+      "description": "Custom transaction categories scoped to users",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
         "name": { "type": "string" },
-        "icon": { "type": "string" },
-        "color": { "type": "string" }
+        "createdByUserId": { "type": "string" }
       },
       "required": ["id", "name"]
     },
     "budgets": {
       "title": "Budgets",
-      "description": "Household and category budget caps",
+      "description": "Per-user household budget caps",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
         "householdMonthlyBudget": { "type": "number" },
-        "categoryBudgets": { "type": "array" }
+        "createdByUserId": { "type": "string" }
       },
       "required": ["id", "householdMonthlyBudget"]
     }

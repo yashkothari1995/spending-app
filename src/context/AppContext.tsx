@@ -11,9 +11,19 @@ import {
   onSnapshot,
   setDoc,
   deleteDoc,
-  writeBatch,
+  query,
+  where,
+  getDoc,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import {
+  db,
+  auth,
+  googleProvider,
+  signInWithPopup,
+  signOut,
+  onAuthStateChanged,
+  User,
+} from '../lib/firebase';
 
 import {
   Expense,
@@ -45,6 +55,11 @@ import {
 } from '../utils/calculations';
 
 interface AppContextType {
+  authUser: User | null;
+  authLoading: boolean;
+  loginWithGoogle: () => Promise<void>;
+  logoutGoogle: () => Promise<void>;
+
   userProfile: UserProfile;
   userAccounts: UserAccount[];
   currentUserId: string;
@@ -128,6 +143,8 @@ const LOCAL_STORAGE_KEY_CATEGORIES = 'spend_tracker_categories_v1';
 const LOCAL_STORAGE_KEY_BUDGET = 'spend_tracker_budget_v1';
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [isCloudConnected, setIsCloudConnected] = useState(false);
 
   // Accounts state
@@ -191,6 +208,86 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     recurringType: 'all',
   });
 
+  // Listen to Firebase Auth state
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setAuthUser(user);
+      setAuthLoading(false);
+
+      if (user) {
+        setIsCloudConnected(true);
+        const userDocRef = doc(db, 'userAccounts', user.uid);
+        const snap = await getDoc(userDocRef);
+
+        let prof: UserProfile;
+        if (snap.exists()) {
+          const acc = snap.data() as UserAccount;
+          prof = {
+            id: acc.id,
+            name: acc.name,
+            email: acc.email,
+            avatarColor: acc.avatarColor || 'indigo',
+            hasPartner: acc.hasPartner || false,
+            partnerName: acc.partnerName || '',
+            partnerUserId: acc.partnerUserId || '',
+            currency: acc.currency || '$',
+          };
+        } else {
+          // Initialize user account document in Firestore
+          const newAcc: UserAccount = {
+            id: user.uid,
+            name: user.displayName || user.email?.split('@')[0] || 'User',
+            email: user.email || '',
+            avatarColor: 'indigo',
+            hasPartner: false,
+            partnerName: '',
+            partnerUserId: '',
+            currency: '$',
+            createdAt: new Date().toISOString(),
+          };
+          await setDoc(userDocRef, newAcc).catch(console.error);
+          prof = {
+            id: newAcc.id,
+            name: newAcc.name,
+            email: newAcc.email,
+            avatarColor: newAcc.avatarColor,
+            hasPartner: newAcc.hasPartner,
+            partnerName: newAcc.partnerName,
+            partnerUserId: newAcc.partnerUserId,
+            currency: newAcc.currency,
+          };
+        }
+
+        setCurrentUserId(user.uid);
+        setUserProfileState(prof);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const loginWithGoogle = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (err) {
+      console.error('Google Auth login error:', err);
+      alert('Could not sign in with Google. Please check popup permissions.');
+    }
+  };
+
+  const logoutGoogle = async () => {
+    try {
+      await signOut(auth);
+      setAuthUser(null);
+      setUserProfileState(DEFAULT_USER_PROFILE);
+      setExpensesState([]);
+      setRecurringExpensesState([]);
+      setSettlementsState([]);
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+  };
+
   // LocalStorage Fallback Persistence
   useEffect(() => {
     localStorage.setItem(LOCAL_STORAGE_KEY_USERS, JSON.stringify(userAccounts));
@@ -224,110 +321,91 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem(LOCAL_STORAGE_KEY_BUDGET, JSON.stringify(budget));
   }, [budget]);
 
-  // Firestore Real-Time Synchronization & Seeding
+  // Firestore Real-Time Synchronization (User-Isolated Queries)
   useEffect(() => {
-    let unsubscribed = false;
+    if (!authUser) {
+      // Unauthenticated demo fallback logic
+      return;
+    }
+
+    const uid = authUser.uid;
 
     // 1. Sync User Accounts
     const unsubAccounts = onSnapshot(
-      collection(db, 'userAccounts'),
+      doc(db, 'userAccounts', uid),
       (snapshot) => {
         setIsCloudConnected(true);
-        if (snapshot.empty) {
-          // Seed default accounts
-          DEFAULT_ACCOUNTS.forEach((acc) => {
-            setDoc(doc(db, 'userAccounts', acc.id), acc).catch(console.error);
-          });
-        } else {
-          const accs: UserAccount[] = snapshot.docs.map((d) => d.data() as UserAccount);
-          setUserAccounts(accs);
+        if (snapshot.exists()) {
+          const acc = snapshot.data() as UserAccount;
+          setUserAccounts([acc]);
         }
       },
-      (err) => console.warn('Firestore userAccounts offline/sync issue:', err)
+      (err) => console.warn('Firestore userAccount sync:', err)
     );
 
-    // 2. Sync Expenses
+    // 2. Sync User Expenses (only user's expenses)
+    const expensesQuery = query(collection(db, 'expenses'), where('createdByUserId', '==', uid));
     const unsubExpenses = onSnapshot(
-      collection(db, 'expenses'),
+      expensesQuery,
       (snapshot) => {
         setIsCloudConnected(true);
-        if (snapshot.empty) {
-          // Seed default initial expenses
-          INITIAL_EXPENSES.forEach((exp) => {
-            setDoc(doc(db, 'expenses', exp.id), exp).catch(console.error);
-          });
-        } else {
-          const exps: Expense[] = snapshot.docs.map((d) => d.data() as Expense);
-          setExpensesState(exps);
-        }
+        const exps: Expense[] = snapshot.docs.map((d) => d.data() as Expense);
+        setExpensesState(exps);
       },
-      (err) => console.warn('Firestore expenses sync issue:', err)
+      (err) => console.warn('Firestore expenses sync:', err)
     );
 
-    // 3. Sync Recurring Expenses
+    // 3. Sync User Recurring Expenses
+    const recQuery = query(collection(db, 'recurringExpenses'), where('createdByUserId', '==', uid));
     const unsubRecurring = onSnapshot(
-      collection(db, 'recurringExpenses'),
+      recQuery,
       (snapshot) => {
-        if (snapshot.empty) {
-          INITIAL_RECURRING_EXPENSES.forEach((rec) => {
-            setDoc(doc(db, 'recurringExpenses', rec.id), rec).catch(console.error);
-          });
-        } else {
-          const recs: RecurringExpense[] = snapshot.docs.map((d) => d.data() as RecurringExpense);
-          setRecurringExpensesState(recs);
-        }
+        const recs: RecurringExpense[] = snapshot.docs.map((d) => d.data() as RecurringExpense);
+        setRecurringExpensesState(recs);
       },
-      (err) => console.warn('Firestore recurringExpenses sync issue:', err)
+      (err) => console.warn('Firestore recurring sync:', err)
     );
 
-    // 4. Sync Settlements
+    // 4. Sync User Settlements
+    const setQuery = query(collection(db, 'settlements'), where('createdByUserId', '==', uid));
     const unsubSettlements = onSnapshot(
-      collection(db, 'settlements'),
+      setQuery,
       (snapshot) => {
-        if (snapshot.empty) {
-          INITIAL_SETTLEMENTS.forEach((s) => {
-            setDoc(doc(db, 'settlements', s.id), s).catch(console.error);
-          });
-        } else {
-          const sets: Settlement[] = snapshot.docs.map((d) => d.data() as Settlement);
-          setSettlementsState(sets);
-        }
+        const sets: Settlement[] = snapshot.docs.map((d) => d.data() as Settlement);
+        setSettlementsState(sets);
       },
-      (err) => console.warn('Firestore settlements sync issue:', err)
+      (err) => console.warn('Firestore settlements sync:', err)
     );
 
     // 5. Sync Categories
     const unsubCategories = onSnapshot(
       collection(db, 'categories'),
       (snapshot) => {
-        if (snapshot.empty) {
-          DEFAULT_CATEGORIES.forEach((c) => {
-            setDoc(doc(db, 'categories', c.id), c).catch(console.error);
-          });
-        } else {
+        if (!snapshot.empty) {
           const cats: Category[] = snapshot.docs.map((d) => d.data() as Category);
           setCategoriesState(cats);
         }
       },
-      (err) => console.warn('Firestore categories sync issue:', err)
+      (err) => console.warn('Firestore categories sync:', err)
     );
 
     // 6. Sync Budget
     const unsubBudget = onSnapshot(
-      doc(db, 'budgets', 'main_budget'),
+      doc(db, 'budgets', uid),
       (snapshot) => {
-        if (!snapshot.exists()) {
-          setDoc(doc(db, 'budgets', 'main_budget'), { ...INITIAL_BUDGET, id: 'main_budget' }).catch(console.error);
-        } else {
+        if (snapshot.exists()) {
           const b = snapshot.data() as Budget;
           setBudgetState(b);
+        } else {
+          const newBud: Budget = { ...INITIAL_BUDGET, id: uid };
+          setDoc(doc(db, 'budgets', uid), newBud).catch(console.error);
+          setBudgetState(newBud);
         }
       },
-      (err) => console.warn('Firestore budget sync issue:', err)
+      (err) => console.warn('Firestore budget sync:', err)
     );
 
     return () => {
-      unsubscribed = true;
       unsubAccounts();
       unsubExpenses();
       unsubRecurring();
@@ -335,7 +413,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unsubCategories();
       unsubBudget();
     };
-  }, []);
+  }, [authUser]);
 
   // Auto-process due recurring expenses on mount
   useEffect(() => {
@@ -494,13 +572,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   };
 
-  // CRUD Actions
+  // CRUD Actions bound to authUser.uid
   const addExpense = (expenseData: Omit<Expense, 'id' | 'createdAt'>) => {
+    const activeUid = authUser?.uid || userProfile.id;
     const newExp: Expense = {
       ...expenseData,
       id: `exp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      createdByUserId: userProfile.id,
-      createdByUserName: userProfile.name,
+      createdByUserId: activeUid,
+      createdByUserName: authUser?.displayName || userProfile.name,
       createdAt: new Date().toISOString(),
     };
     setExpensesState((prev) => [newExp, ...prev]);
@@ -604,9 +683,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addRecurringExpense = (
     recData: Omit<RecurringExpense, 'id' | 'createdAt' | 'occurrencesCount'>
   ) => {
+    const activeUid = authUser?.uid || userProfile.id;
     const newRec: RecurringExpense = {
       ...recData,
       id: `rec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      createdByUserId: activeUid,
       occurrencesCount: 0,
       createdAt: new Date().toISOString(),
     };
@@ -647,9 +728,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addSettlement = (settlementData: Omit<Settlement, 'id' | 'createdAt'>) => {
+    const activeUid = authUser?.uid || userProfile.id;
     const newSet: Settlement = {
       ...settlementData,
       id: `set_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      createdByUserId: activeUid,
       createdAt: new Date().toISOString(),
     };
     setSettlementsState((prev) => [newSet, ...prev]);
@@ -664,25 +747,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const updateUserProfile = (profileFields: Partial<UserProfile>) => {
     setUserProfileState((prev) => {
       const u = { ...prev, ...profileFields };
-      // Also update account document in userAccounts
-      const acc = userAccounts.find((a) => a.id === u.id);
-      if (acc) {
-        const updatedAcc = { ...acc, ...u };
-        setDoc(doc(db, 'userAccounts', updatedAcc.id), updatedAcc).catch(console.error);
-      }
+      const activeUid = authUser?.uid || u.id;
+      setDoc(doc(db, 'userAccounts', activeUid), u, { merge: true }).catch(console.error);
       return u;
     });
   };
 
   const updateBudget = (updatedBudget: Budget) => {
-    setBudgetState(updatedBudget);
-    setDoc(doc(db, 'budgets', 'main_budget'), { ...updatedBudget, id: 'main_budget' }).catch(console.error);
+    const activeUid = authUser?.uid || 'main_budget';
+    const b = { ...updatedBudget, id: activeUid, createdByUserId: activeUid };
+    setBudgetState(b);
+    setDoc(doc(db, 'budgets', activeUid), b).catch(console.error);
   };
 
   const addCustomCategory = (catData: Omit<Category, 'id' | 'isCustom'>) => {
+    const activeUid = authUser?.uid || userProfile.id;
     const newCat: Category = {
       ...catData,
       id: `cat_custom_${Date.now()}`,
+      createdByUserId: activeUid,
       isCustom: true,
     };
     setCategoriesState((prev) => [...prev, newCat]);
@@ -701,14 +784,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSettlementsState(INITIAL_SETTLEMENTS);
     setCategoriesState(DEFAULT_CATEGORIES);
     setBudgetState(INITIAL_BUDGET);
-
-    // Overwrite Firestore documents
-    INITIAL_EXPENSES.forEach((exp) => setDoc(doc(db, 'expenses', exp.id), exp).catch(console.error));
-    INITIAL_RECURRING_EXPENSES.forEach((rec) => setDoc(doc(db, 'recurringExpenses', rec.id), rec).catch(console.error));
-    INITIAL_SETTLEMENTS.forEach((s) => setDoc(doc(db, 'settlements', s.id), s).catch(console.error));
-    DEFAULT_CATEGORIES.forEach((c) => setDoc(doc(db, 'categories', c.id), c).catch(console.error));
-    DEFAULT_ACCOUNTS.forEach((a) => setDoc(doc(db, 'userAccounts', a.id), a).catch(console.error));
-    setDoc(doc(db, 'budgets', 'main_budget'), { ...INITIAL_BUDGET, id: 'main_budget' }).catch(console.error);
 
     setFilters({
       searchQuery: '',
@@ -731,6 +806,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   return (
     <AppContext.Provider
       value={{
+        authUser,
+        authLoading,
+        loginWithGoogle,
+        logoutGoogle,
+
         userProfile,
         userAccounts,
         currentUserId,
