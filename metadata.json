@@ -1,0 +1,6 @@
+{
+  "name": "Spend Tracker - Personal & Family Expense Manager",
+  "description": "Track personal and family expenses, splits, who paid vs who owes, recurring subscriptions, budgets, settlements, and financial reporting.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

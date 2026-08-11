@@ -1,0 +1,96 @@
+{
+  "entities": {
+    "userAccounts": {
+      "title": "User Accounts",
+      "description": "User accounts and profile metadata for multi-user family split tracking",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "avatarColor": { "type": "string" },
+        "hasPartner": { "type": "boolean" },
+        "partnerName": { "type": "string" },
+        "partnerUserId": { "type": "string" },
+        "currency": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "expenses": {
+      "title": "Expenses",
+      "description": "Individual logged expense transactions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string" },
+        "category": { "type": "string" },
+        "paidBy": { "type": "string" },
+        "splitType": { "type": "string" },
+        "splitCount": { "type": "number" },
+        "notes": { "type": "string" },
+        "createdByUserId": { "type": "string" },
+        "createdByUserName": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "title", "amount", "date", "category", "paidBy"]
+    },
+    "recurringExpenses": {
+      "title": "Recurring Expenses",
+      "description": "Automated recurring expense templates",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "amount": { "type": "number" },
+        "frequency": { "type": "string" },
+        "category": { "type": "string" },
+        "paidBy": { "type": "string" },
+        "splitType": { "type": "string" },
+        "nextDueDate": { "type": "string" },
+        "active": { "type": "boolean" }
+      },
+      "required": ["id", "title", "amount", "frequency", "category"]
+    },
+    "settlements": {
+      "title": "Settlements",
+      "description": "Recorded payments settling up partner balances",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string" },
+        "payer": { "type": "string" },
+        "payee": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "amount", "date", "payer", "payee"]
+    },
+    "categories": {
+      "title": "Categories",
+      "description": "Custom transaction categories",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "icon": { "type": "string" },
+        "color": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "budgets": {
+      "title": "Budgets",
+      "description": "Household and category budget caps",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "householdMonthlyBudget": { "type": "number" },
+        "categoryBudgets": { "type": "array" }
+      },
+      "required": ["id", "householdMonthlyBudget"]
+    }
+  }
+}
